@@ -1,0 +1,7 @@
+https://github.com/goodfeli/adversarial
+http://torch.ch/blog/2015/11/13/gan.html
+https://github.com/EderSantana/seya/blob/master/examples/wip-GAN.ipynb
+https://github.com/Newmu/dcgan_code
+https://github.com/phreeza/keras-GAN
+https://github.com/jacobgil/keras-dcgan/blob/master/dcgan.py
+http://arxiv.org/pdf/1406.2661v1.pdf
