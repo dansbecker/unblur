@@ -145,7 +145,7 @@ if __name__ == "__main__":
                               filter_size=3,
                               block_subsample=(2,2),
                               filters_in_deconv=24)
-    my_model.fit(blurred_images, clear_images, nb_epoch=250, batch_size=2)
+    my_model.fit(blurred_images, clear_images, nb_epoch=500, batch_size=2)
 
 
     blurred_val_images = get_blurred_img_array(num_training_images, total_images)
