@@ -90,3 +90,5 @@ ENV/
 
 data/
 tmp/
+.remote-sync.json
+.DS_Store
