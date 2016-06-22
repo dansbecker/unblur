@@ -48,6 +48,37 @@ def apply_res_block(block_input,
     return output
 
 
+def make_models(input_shape):
+    blurry_img = Input(shape=input_shape, name='blurry_img')
+
+    gen_output = Convolution2D(3, 3, 3, border_mode='same', activation='relu')(blurry_img))
+    gen_model = Model(input=blurry_img, output=gen_output)
+
+    clear_img = Input(shape=input_shape, name='clear_img')
+    discrim_layer = Convolution2D(n_filt_base, 4, 4, subsample=(2, 2), border_mode='same', activation='relu')
+    layer_on_blurry = discrim_layer(blurry_img)
+    layer_on_clear = discrim_layer(clear_img)
+    disc_blurry_flattened = Flatten()(layer_on_blurry)
+    disc_clear_flattened = Flatten()(layer_on_clear)
+    disc_merged = merge([disc_blurry_flattened, disc_clear_flattened],
+                   mode='concat',
+                   concat_axis=1)
+    disc_output_maker = Dense(1, activation='sigmoid', name='y')
+    disc_output = disc_output_maker(merged)
+    disc_model = Model(input=[blurry_img, clear_img],
+                       output=disc_output)
+
+    gen_disc_first_layer = discrim_layer(gen_output)
+    gen_disc_clear_flattened = Flatten()(gen_disc_first_layer)
+    gen_disc_merged = merge([disc_blurry_flattened, gen_disc_clear_flattened])
+    gen_disc_output = disc_output_maker(gen_disc_merged)
+    gen_disc_model = Model(input=[blurry_img], output=gen_disc_output)
+
+    return gen_model, disc_model, gen_disc_model
+
+
+
+
 def make_gen_model(input_shape,
                    num_res_blocks = 3,
                    layers_in_res_blocks=2,
@@ -76,9 +107,9 @@ def make_gen_model(input_shape,
             of loss function
     '''
 
-    model_input = Input(shape=input_shape)
+    blurry_img = Input(shape=input_shape, name='blurry_img')
     # Convert num channels to match upcoming resnets
-    x = Convolution2D(filters_in_res_blocks, 3, 3, border_mode='same', activation='relu')(model_input)
+    x = Convolution2D(filters_in_res_blocks, 3, 3, border_mode='same', activation='relu')(blurry_img)
     for i in range(num_res_blocks):
         x = apply_res_block(x,
                             n_filters=filters_in_res_blocks,
@@ -95,8 +126,8 @@ def make_gen_model(input_shape,
 
     # fix channels back to 3
     # DCGAN paper suggests last layer of generator be tanh. Didn't work for me in early experiment
-    output = Convolution2D(3, 2, 2, border_mode='same', activation='relu')(x)
-    model = Model(input=model_input, output=output)
+    clear_img = Convolution2D(3, 2, 2, border_mode='same', activation='relu', name='clear_img')(x)
+    model = Model(input=blurry_img, output=[blurry_img, clear_img])
     return model
 
 def make_discrim_model(input_shape, n_filt_base = 16):
@@ -112,27 +143,27 @@ def make_discrim_model(input_shape, n_filt_base = 16):
     ------
         Compiled disciminative model
     '''
-
-    THIS NEEDS TO TAKE BOTH IMAGES AS INPUT. WILL BE A MODEL(). THEN NEED TO FIX THE GENERATOR
-    model = Sequential()
-    model.add(Convolution2D(n_filt_base, 4, 4, subsample=(2, 2), border_mode = 'same', input_shape=input_shape))
-    model.add(LeakyReLU(0.2))
-    model.add(Convolution2D(n_filt_base*2, 4, 4, subsample=(2, 2), border_mode = 'same'))
-    model.add(LeakyReLU(0.2))
-    model.add(Convolution2D(n_filt_base*2, 4, 4, subsample=(2, 2), border_mode = 'same'))
-    model.add(LeakyReLU(0.2))
-    model.add(Convolution2D(n_filt_base*4, 4, 4, subsample=(2, 2), border_mode = 'same'))
-    model.add(LeakyReLU(0.2))
-    model.add(Flatten())
-    model.add(Dense(output_dim=1))
-    model.add(Activation('sigmoid'))
-    return model
+    blurry_img = Input(shape=input_shape, name='blurry_img')
+    clear_img = Input(shape=input_shape, name='clear_img')
+    my_layer = Convolution2D(n_filt_base, 4, 4, subsample=(2, 2), border_mode='same', activation='relu')
+    layer_on_blurry = my_layer(blurry_img)
+    layer_on_clear = my_layer(clear_img)
+    layer_on_blurry = Flatten()(layer_on_blurry)
+    layer_on_clear = Flatten()(layer_on_clear)
+    merged = merge([layer_on_blurry, layer_on_clear],
+                   mode='concat',
+                   concat_axis=1)
+    y = Dense(1, activation='sigmoid', name='y')(merged)
+    my_model = Model(input=[blurry_img, clear_img],
+                    output=y)
+    return my_model
 
 def make_gen_on_discrim(generator, discriminator):
     model = Sequential()
     model.add(generator)
     discriminator.trainable = False
     model.add(discriminator)
+    print(model.summary())
     return model
 
 def tf_to_th_dim_order(img):
@@ -178,24 +209,25 @@ def get_batches(train_data_dir='./tmp/', batch_size=2):
     def read_and_transform(fpath):
         return tf_to_th_dim_order(cv2.imread(fpath))
 
-    clean_images = []
     blur_images = []
+    clear_images = []
     for fname in clean_dir_list:
-        clean_images.append(read_and_transform(clean_dir + fname))
+        clear_images.append(read_and_transform(clean_dir + fname))
         blur_images.append(read_and_transform(blur_dir + fname))
-        if len(clean_images) == batch_size:
-            y = [1 for _ in clean_images]
-            yield [np.array(image_list) for image_list in (clean_images, blur_images, y)]
-            clean_images = []
+        if len(clear_images) == batch_size:
+            y = [1 for _ in clear_images]
+            yield [np.array(image_list) for image_list in (blur_images, clear_images, y)]
             blur_images = []
+            clear_images = []
     # in case end of files doesn't correspond to end of a batch
-    yield [np.array(image_list) for image_list in (clean_images, blur_images)]
+    yield [np.array(image_list) for image_list in (blur_images, clear_images)]
 
 
 def train(discrim_model, gen_model, train_data_dir, batch_size=2, nb_pseudo_epochs=100):
     for i in range(nb_pseudo_epochs):
-        for X, y in get_batches(train_data_dir, batch_size):
-            MAKE GENERATED/PREDICTED IMAGES HERE
+        for blur_images, clear_images, y in get_batches(train_data_dir, batch_size):
+            X = [blur_images, clear_images]
+            ### MAKE GENERATED/PREDICTED IMAGES HERE
             gen_on_discrim = make_gen_on_discrim(gen_model, discrim_model)
             gen_on_discrim.compile(loss='binary_crossentropy', optimizer='adam')
             g_loss = gen_on_discrim.train_on_batch(X, y)
@@ -222,7 +254,7 @@ if __name__ == "__main__":
     img_height = 176
     img_width = 96
     input_shape = (3, img_height, img_width)
-    remake_images = True
+    remake_images = False
 
     if remake_images:
         make_and_save_images(images_to_make=total_images,
@@ -232,12 +264,15 @@ if __name__ == "__main__":
 
     discrim_model = make_discrim_model(input_shape)
     gen_model = make_gen_model(input_shape,
-                               num_res_blocks=3,
+                               num_res_blocks=1,
                                layers_in_res_blocks=2,
                                filters_in_res_blocks=16,
                                filter_size=3,
                                block_subsample=(2,2),
                                filters_in_deconv=16)
+
+    # Just for experimentation
+    gen_on_discrim = make_gen_on_discrim(gen_model, discrim_model)
 
     discrim_model, gen_model, gen_on_discrim = train(discrim_model,
                                                      gen_model,
