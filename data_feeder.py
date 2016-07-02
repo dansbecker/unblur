@@ -12,7 +12,7 @@ class DataFeeder(object):
 
     batch_size should be even, since disc data comes in pairs of real/generated obs.
     '''
-    def __init__(self, train_data_dir='./tmp/', batch_size=4):
+    def __init__(self, train_data_dir='./tmp/', batch_size=4, gen_only_batch_size=4):
         self.clean_dir = train_data_dir + 'clean/'
         self.blur_dir = train_data_dir + 'blur/'
         self.fnames = os.listdir(self.clean_dir)
@@ -20,6 +20,7 @@ class DataFeeder(object):
 
         shuffle(self.fnames)
         self.batch_size = batch_size
+        self.gen_only_batch_size = gen_only_batch_size
         self.blur_images = []
         self.clear_images = []
         self.is_real = []
@@ -55,3 +56,12 @@ class DataFeeder(object):
             self._add_gen_image_pair_to_batch(fname, gen_model)
         blur_out, clear_out, is_real = (np.array(x) for x in (self.blur_images, self.clear_images, self.is_real))
         return (blur_out, clear_out, is_real)
+
+    def get_gen_only_batch(self):
+        self._reset_accumulators()
+        while len(self.is_real) < self.gen_only_batch_size:
+            fname = choice(self.fnames)
+            self.blur_images.append(read_and_transform_image(self.blur_dir + fname))
+            self.is_real.append(0)
+        blur_out, is_real = (np.array(x) for x in (self.blur_images, self.is_real))
+        return (blur_out, is_real)
