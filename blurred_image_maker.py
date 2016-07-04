@@ -16,7 +16,9 @@ def show_img(img, msec_to_show_for=500):
 
 def tmp_setup():
     shutil.rmtree('./tmp')
-    os.makedirs('./tmp', exist_ok=True)
+    os.makedirs('./tmp/clean', exist_ok=True)
+    os.makedirs('./tmp/blur', exist_ok=True)
+    os.makedirs('./tmp/predicted', exist_ok=True)
 
 def get_n_frames(video_obj, n_frames, img_height, img_width):
     raw_frames = (video_obj.read()[1] for c in range(n_frames))
@@ -42,7 +44,7 @@ def set_random_starting_frame(vc, mixing_length):
     vc.set(cv2.CAP_PROP_POS_FRAMES, start_frame_num)
     return
 
-def get_pair_to_yield(vc, frames_to_mix, img_height, img_width):
+def make_clean_blur_pair(vc, frames_to_mix, img_height, img_width):
     raw_frames = get_n_frames(vc, frames_to_mix, img_height, img_width)
     new_frame = mix_frames(raw_frames)
     return raw_frames[0], new_frame
@@ -54,8 +56,8 @@ def make_and_save_images(images_to_make = 20,
                          vid_fname = './data/test.mp4'):
     tmp_setup()
     vc = cv2.VideoCapture(vid_fname)
-    output = [get_pair_to_yield(vc, frames_to_mix, img_height, img_width) for i in range(images_to_make)]
+    output = [make_clean_blur_pair(vc, frames_to_mix, img_height, img_width) for i in range(images_to_make)]
     vc.release()
     for counter, img_pair in enumerate(output):
-        cv2.imwrite('./tmp/' + str(counter) + '_single.jpg', img_pair[0])
-        cv2.imwrite('./tmp/' + str(counter) + '_blur.jpg', img_pair[1])
+        cv2.imwrite('./tmp/clean/' + str(counter) + '.jpg', img_pair[0])
+        cv2.imwrite('./tmp/blur/' + str(counter) + '.jpg', img_pair[1])

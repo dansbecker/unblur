@@ -1,31 +1,30 @@
-import cv2
-import numpy as np
 import keras
-from keras.layers import Dense, Activation, Input, merge, Convolution2D, \
+from keras.layers import Dense, Activation, Input, merge, Convolution2D, LeakyReLU, \
                          MaxPooling2D, BatchNormalization, Flatten, UpSampling2D, AveragePooling2D
-from keras.models import Model
-from test_making_blurred_images import show_img, make_and_save_images
+from keras.models import Model, Sequential
+from keras.optimizers import SGD, Adam
+from keras.backend import log, clip
+
 
 def apply_res_block(block_input,
-                    n_filters=24,
+                    n_filters=16,
                     filter_size=3,
                     layers_in_res_blocks=3,
-                    subsample=(2,2)):
+                    subsample=(1, 1)):
     '''
     inputs:
         block_input: input tensor to apply the resnet block to
         n_filters: number of convolutional filters in each layer
         filter_size: both the height and width of convolutional filters
         layers_in_res_blocks: number of conv layers on the convolutional path
-        subsample: tuple with stride for convolutional path. Applied only once, not in each conv
-
+        subsample: tuple with stride for convolutional path. APPLIED ONLY ONCE, not in each conv
     outputs:
         output: the tensor after applying the resnet to the input
+
     NOTE: Current implementation assumes dim_order is 'th'.  (channel, row, col)
     '''
 
     # convolution path
-    shortcut = AveragePooling2D(pool_size=subsample, border_mode='same')(block_input)
     conv_y = block_input
     for i in range(layers_in_res_blocks):
         if i == 0:
@@ -36,122 +35,98 @@ def apply_res_block(block_input,
                                subsample=this_layer_subsample,
                                activation='relu', border_mode='same')(conv_y)
 
+    # Keras doesn't currently support 'same' mode for AveragePooling2D with theano
+    # otherwise would do:
+    # shortcut = AveragePooling2D(pool_size=subsample, border_mode='same')(block_input)
+    # in the meantime, we use identity for shortcut, and require no subsampling
+
+    assert subsample==(1,1)
+    shortcut = block_input
+
     output = merge([shortcut, conv_y], mode='sum')
-    #block = Model(input=block_input, output=block_output)
     return output
 
-
-def make_gen_model(img_height, img_width,
-                         num_res_blocks = 3,
-                         layers_in_res_blocks=2,
-                         filters_in_res_blocks=20,
-                         filter_size=3,
-                         block_subsample=(1,1),
-                         filters_in_deconv=32):
+def gen_disc_objective(y_true, y_pred):
     '''
+    Objective function for optimizing the stacked generator-discriminator.
+    We only train the generator layers, and we want the outcome probability reported
+    by the generator to be high.
+
+    Conventionally would use -1 * np.log(y_pred). Though the simpler -1 * y_pred
+    may reduce risk of vanishing or exploding gradient.'''
+    epsilon = 1.0e-9
+    y_pred = clip(y_pred, epsilon, 1.0 - epsilon)
+
+    return -1 * log(y_pred)
+
+def make_models(input_shape,
+                n_res_blocks_in_gen=2,
+                n_filters_in_res_blocks=24,
+                gen_filter_size=4,
+                layers_in_res_blocks=3,
+                res_block_subsample=(1,1),
+                filters_in_deconv=32,
+                deconv_filter_size=3,
+                n_disc_filter=16):
+    '''
+    Creates 3 models. A disciminator, a generator, and a model that stacks these two.
+    Some layers are shared in multiple models
+
     inputs:
-        img_height and img_width: pixel height and width of inputs.
-            input is assumed to be in 'th' dim order, with 3 channels
-        num_res_blocks: Number of resnet blocks to apply in convolution stage
-        layers_in_res_blocks: Number of convolutional layers in each res net block
-        filters_in_res_blocks: Number of convolutional filters in the resnet blocks
-        filter_size: Size of the kernel/filters in the resnets
-        block_subsample: Tuple of stride length for resnet blocks
-        filters_in_deconv: Number of filters to use in deconvolution stage
-            note that deconvolution only happens if we are doing sampling in
-            conv stage
-
-    Outputs:
-        Flattened version of image pixel intensities. This format simplifies calculation
-            of loss function
+        input_shape: single shape describing the blurry and clear image. In th dim_order
     '''
-    layer_input_shape = (3, img_height, img_width)
-    model_input = Input(shape=layer_input_shape)
-    # Convert num channels to match upcoming resnets
-    x = Convolution2D(filters_in_res_blocks, 2, 2, border_mode='same', activation='relu')(model_input)
-    for i in range(num_res_blocks):
-        x = apply_res_block(x,
-                            n_filters=filters_in_res_blocks,
-                            layers_in_res_blocks=layers_in_res_blocks,
-                            filter_size=filter_size,
-                            subsample=block_subsample)
 
-    # deconvolution to fix shrinking of image in previous blocks
-    if block_subsample != (1,1):
-        for deconv_layer in range(num_res_blocks):
-            x = Convolution2D(filters_in_deconv, 3, 3, border_mode='same', activation='relu')(x)
-            x = UpSampling2D(size=block_subsample)(x)
-            x = Convolution2D(filters_in_deconv, 3, 3, border_mode='same', activation='relu')(x)
+
+    blurry_img = Input(shape=input_shape, name='blurry_img')
+
+    # GENERATIVE MODEL
+    gen_x = Convolution2D(32, gen_filter_size, gen_filter_size, border_mode='same', activation='relu')(blurry_img)
+    gen_x = Convolution2D(n_filters_in_res_blocks, 1, 1, border_mode='same', activation='relu')(gen_x)
+    for i in range(n_res_blocks_in_gen):
+        gen_x = apply_res_block(gen_x,
+                                n_filters=n_filters_in_res_blocks,
+                                filter_size=gen_filter_size,
+                                layers_in_res_blocks=layers_in_res_blocks,
+                                subsample=res_block_subsample)
+    if res_block_subsample != (1,1):
+        for deconv_layer in range(n_res_blocks_in_gen):
+            gen_x = Convolution2D(filters_in_deconv, deconv_filter_size, deconv_filter_size, border_mode='same', activation='relu')(gen_x)
+            gen_x = UpSampling2D(size=res_block_subsample)(gen_x)
+            gen_x = Convolution2D(filters_in_deconv, deconv_filter_size, deconv_filter_size, border_mode='same', activation='relu')(gen_x)
 
     # fix channels back to 3
-    channel_fixing_layer = Convolution2D(3, 2, 2, border_mode='same', activation='relu')(x)
-    # DCGAN paper suggests last layer of generator be tanh. Didn't work for me in early experiment
-    output = Flatten()(channel_fixing_layer)
-    model = Model(input=model_input, output=output)
-    print(model.summary())
-    model.compile(optimizer='adam', loss='mse')
-    return model
-
-def tf_to_th_dim_order(img):
-    '''Moves channel from index position 2 to index position 0'''
-    return img.swapaxes(1, 2).swapaxes(0, 1)
+    gen_output = Convolution2D(3, 1, 1, border_mode='same', activation='relu')(gen_x)
+    gen_model = Model(input=blurry_img, output=gen_output)
 
 
-def th_to_tf_dim_order(img):
-    '''Moves channel from index position 0 to index position 2'''
-    return img.swapaxes(0, 1).swapaxes(1, 2)
+    # Discrim model here
+    clear_img = Input(shape=input_shape, name='clear_img')
+    disc_layer = Convolution2D(n_disc_filter, 4, 4, subsample=(2, 2), border_mode='same',
+                                  init='glorot_uniform', activation='relu', name='disc_layer_1')
+    layer_on_blurry = disc_layer(blurry_img)
+    layer_on_clear = disc_layer(clear_img)
+    disc_blurry_flattened = Flatten()(layer_on_blurry)
+    disc_clear_flattened = Flatten()(layer_on_clear)
+    disc_merged = merge([disc_blurry_flattened, disc_clear_flattened],
+                   mode='concat',
+                   concat_axis=1)
 
-def normalize_pred_img_array(img):
-    out = th_to_tf_dim_order(img)
-    out = out.clip(0,255).astype('uint8')
-    return out
+    disc_output_maker = Dense(1, activation='sigmoid', init='he_normal', name='disc_output_maker')
+    disc_output = disc_output_maker(disc_merged)
+    disc_model = Model(input=[blurry_img, clear_img],
+                       output=disc_output)
 
-def get_blurred_img_array(start_num=0, end_num=10):
-    '''Creates training data. Filenaming convention uses integers. Args indicate which files to pull'''
-    blurred_images = []
-    for i in range(start_num, end_num):
-        blurred_img = cv2.imread('./tmp/' + str(i) + '_blur.jpg')
-        blurred_images.append(tf_to_th_dim_order(blurred_img))
-    blurred_images = np.array(blurred_images)
-    return blurred_images
+    # Gen-disc stack here
+    gen_disc_first_layer = disc_layer(gen_output)
+    gen_disc_clear_flattened = Flatten()(gen_disc_first_layer)
+    gen_disc_merged = merge([disc_blurry_flattened, gen_disc_clear_flattened],
+                            mode='concat',
+                            concat_axis=1)
+    gen_disc_output = disc_output_maker(gen_disc_merged)
+    gen_disc_model = Model(input=[blurry_img], output=gen_disc_output)
 
-def get_clear_img_array(start_num=0, end_num=10):
-    '''Creates target data. Filenaming convention uses integers. Args indicate which files to pull'''
-    clear_images = []
-    for i in range(start_num, end_num):
-        clear_img = cv2.imread('./tmp/' + str(i) + '_single.jpg')
-        # ravel the clear_img to simplify evaluating loss in model
-        clear_images.append(tf_to_th_dim_order(clear_img).ravel())
-    clear_images = np.array(clear_images)
-    return clear_images
-
-
-if __name__ == "__main__":
-    total_images = 40
-    num_training_images = 30
-    img_height = 320
-    img_width = 184  # 320:180 preserves aspect ratio. 320:184 avoids padding issue
-    make_and_save_images(images_to_make=total_images,
-                         img_height=img_height,
-                         img_width=img_width)
-
-
-    blurred_images = get_blurred_img_array(0, num_training_images)
-    clear_images = get_clear_img_array(0, num_training_images)
-    my_model = make_gen_model(img_height, img_width,
-                              num_res_blocks=3,
-                              layers_in_res_blocks=2,
-                              filters_in_res_blocks=32,
-                              filter_size=3,
-                              block_subsample=(2,2),
-                              filters_in_deconv=24)
-    my_model.fit(blurred_images, clear_images, nb_epoch=500, batch_size=2)
-
-
-    blurred_val_images = get_blurred_img_array(num_training_images, total_images)
-    val_pred_imgs = my_model.predict(blurred_val_images).reshape([total_images - num_training_images, 3, img_height, img_width])
-    for i, img in enumerate(val_pred_imgs):
-        img_num = num_training_images + i
-        out_fname = './tmp/' +  str(img_num) + '_predicted.jpg'
-        img = normalize_pred_img_array(img)
-        cv2.imwrite(out_fname, img)
+    disc_optimizer = SGD(lr=0.001)
+    gen_optimizer = SGD(lr=0.0003)
+    disc_model.compile(loss='binary_crossentropy', optimizer=disc_optimizer)
+    gen_disc_model.compile(loss=gen_disc_objective, optimizer=gen_optimizer)
+    return gen_model, disc_model, gen_disc_model
