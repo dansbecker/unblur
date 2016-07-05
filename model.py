@@ -1,13 +1,15 @@
 import keras
 from keras.layers import Dense, Activation, Input, merge, Convolution2D, LeakyReLU, \
-                         MaxPooling2D, BatchNormalization, Flatten, UpSampling2D, AveragePooling2D
+                         MaxPooling2D, BatchNormalization, Flatten, UpSampling2D, AveragePooling2D, \
+                         ELU, LeakyReLU
+
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adam
 from keras.backend import log, clip
 
 
 def apply_res_block(block_input,
-                    n_filters=16,
+                    n_filters,
                     filter_size=3,
                     layers_in_res_blocks=3,
                     subsample=(1, 1)):
@@ -59,15 +61,28 @@ def gen_disc_objective(y_true, y_pred):
 
     return -1 * log(y_pred)
 
+def make_disc_layers(input_shape, n_disc_filter):
+    output = Sequential(name='disc_layer_stack')
+    output.add(Convolution2D(n_disc_filter, 4, 4, subsample=(2, 2), border_mode='same',
+                             name='disc_layer_1', input_shape=input_shape))
+    output.add(ELU(1))
+    output.add(Convolution2D(n_disc_filter, 3, 3, subsample=(2,2), border_mode='same',
+                             name='disc_layer_2'))
+    output.add(ELU(1))
+    output.add(Convolution2D(n_disc_filter, 2, 2, border_mode='same',
+                             name='disc_layer_3'))
+    output.add(ELU(1))
+    return output
+
 def make_models(input_shape,
                 n_res_blocks_in_gen=2,
-                n_filters_in_res_blocks=24,
+                n_filters_in_res_blocks=64,
                 gen_filter_size=4,
                 layers_in_res_blocks=3,
                 res_block_subsample=(1,1),
                 filters_in_deconv=32,
                 deconv_filter_size=3,
-                n_disc_filter=16):
+                n_disc_filter=64):
     '''
     Creates 3 models. A disciminator, a generator, and a model that stacks these two.
     Some layers are shared in multiple models
@@ -101,8 +116,7 @@ def make_models(input_shape,
 
     # Discrim model here
     clear_img = Input(shape=input_shape, name='clear_img')
-    disc_layer = Convolution2D(n_disc_filter, 4, 4, subsample=(2, 2), border_mode='same',
-                                  init='glorot_uniform', activation='relu', name='disc_layer_1')
+    disc_layer = make_disc_layers(input_shape, n_disc_filter)
     layer_on_blurry = disc_layer(blurry_img)
     layer_on_clear = disc_layer(clear_img)
     disc_blurry_flattened = Flatten()(layer_on_blurry)
@@ -129,4 +143,8 @@ def make_models(input_shape,
     gen_optimizer = SGD(lr=0.0003)
     disc_model.compile(loss='binary_crossentropy', optimizer=disc_optimizer)
     gen_disc_model.compile(loss=gen_disc_objective, optimizer=gen_optimizer)
+    for model in gen_model, disc_model, gen_disc_model:
+        print('------------------------')
+        print(model.summary())
+
     return gen_model, disc_model, gen_disc_model
