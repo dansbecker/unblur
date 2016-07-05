@@ -20,6 +20,11 @@
   - conda update anaconda
   - conda create -n py35 python=3.5 anaconda
   - source activate py35
+- Install opencv3
+  - `conda install -c https://conda.binstar.org/menpo opencv3` does installation. Linking to ffmpeg is open question
+  - In theory, we could do `conda install scikit-video` as possible workaround for opencv3 not being able to use VideoCapture due to ffmpeg prob. Instead, it's easier to build the images in macos where the ffmpeg link isn't an issue, and push the static images to ec2.
+
+
 
 - Update theano
   - pip install --upgrade --no-deps git+git://github.com/Theano/Theano.git
@@ -36,6 +41,7 @@
 
 - pip install keras
 
+- using sftp, put any desired data in the /home/ubuntu/unblur/data directory
 
 ## Set up Remote Syncing from Atom
  - Instructions [here](https://atom.io/packages/remote-sync)

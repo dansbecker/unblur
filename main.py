@@ -25,10 +25,10 @@ def save_predicted_images(gen_model, blurred_images):
 
 
 if __name__ == "__main__":
-    total_images = 120
-    num_training_images = 100
-    img_height = 112
-    img_width = 64
+    total_images = 250
+    num_training_images = 200
+    img_height = 144
+    img_width = 80
 
     input_shape = (3, img_height, img_width)
     remake_images = False
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     gen_model, disc_model, gen_disc_model = make_models(input_shape)
     data_feeder = DataFeeder()
     trainer = Trainer(gen_model, disc_model, gen_disc_model, data_feeder, report_freq=20)
-    trainer.train(n_steps=5000)
+    trainer.train(n_steps=1000)
     gen_model, disc_model, gen_disc_model = trainer.get_models()
     blurred_val_images = get_blurred_img_array(num_training_images, total_images)
     save_predicted_images(gen_model, blurred_val_images)

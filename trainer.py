@@ -1,4 +1,5 @@
 import numpy as np
+from time import time
 
 class Trainer(object):
     def __init__(self, gen_model, disc_model, gen_disc_model, data_feeder, report_freq=20, serialize_freq=np.inf):
@@ -17,12 +18,14 @@ class Trainer(object):
         print('Iteration   Gen Loss    Disc Loss    Gen updates   Disc updates')
 
     def train(self, n_steps=5000):
+        training_start_time = time()
         for i in range(n_steps):
             self._train_step()
             if self.n_steps % self.report_freq == 0:
                 self.report()
             if self.n_steps % self.serialize_freq == 0:
                 self.serialize_models()
+        print('Total training time: %.0f s' %(time() - training_start_time))
 
     def serialize_models(self):
         raise NotImplementedError
