@@ -40,9 +40,9 @@ if __name__ == "__main__":
                              img_width=img_width)
 
     gen_model, disc_model, gen_disc_model = make_models(input_shape)
-    data_feeder = DataFeeder()
-    trainer = Trainer(gen_model, disc_model, gen_disc_model, data_feeder, report_freq=20)
-    trainer.train(n_steps=1000)
+    data_feeder = DataFeeder(batch_size=16, gen_only_batch_size=16)
+    trainer = Trainer(gen_model, disc_model, gen_disc_model, data_feeder, report_freq=10)
+    trainer.train(n_steps=4000)
     gen_model, disc_model, gen_disc_model = trainer.get_models()
     blurred_val_images = get_blurred_img_array(num_training_images, total_images)
     save_predicted_images(gen_model, blurred_val_images)

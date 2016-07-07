@@ -33,9 +33,9 @@ class Trainer(object):
 
     def _train_step(self):
         self.n_steps +=1
-        if ((self.g_loss[-1] > 1) and (self.d_loss[-1] < 0.5)):  # let generator catch up
+        if ((self.g_loss[-1] > 1) and (self.d_loss[-1] < 0.6)):  # let generator catch up
             self._update_gen()
-        elif ((self.g_loss[-1] < 0.5) and (self.d_loss[-1] > 1)): # let discriminator catch up
+        elif ((self.g_loss[-1] < 0.6) and (self.d_loss[-1] > 1)): # let discriminator catch up
             self._update_disc()
         else:  # run both discrim and gen
             self._update_disc()
