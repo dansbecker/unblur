@@ -46,7 +46,7 @@ if __name__ == "__main__":
                                                         res_block_subsample=(2, 2),
                                                         filters_in_deconv=32,
                                                         deconv_filter_size=3,
-                                                        n_disc_filters=[64 for _ in range(4)])
+                                                        n_disc_filters=[64, 64])
     data_feeder = DataFeeder(batch_size=16, gen_only_batch_size=16)
     trainer = Trainer(gen_model, disc_model, gen_disc_model, data_feeder, report_freq=10)
     trainer.train(n_steps=1000)

@@ -1,17 +1,17 @@
 import keras
 from keras.layers import Dense, Activation, Input, merge, Convolution2D, LeakyReLU, \
                          MaxPooling2D, BatchNormalization, Flatten, UpSampling2D, AveragePooling2D, \
-                         ELU, Lambda
+                         ELU, Lambda, Reshape, Convolution3D, MaxPooling3D
 
 from keras.models import Model, Sequential
 from keras.optimizers import SGD, Adam, RMSprop, Adadelta
 from keras.backend import log, clip
 
 
-def apply_res_block(block_input,
-                    n_filters,
-                    filter_size=3,
-                    layers_in_res_blocks=3):
+def res_block_2D(block_input,
+                 n_filters,
+                 filter_size=3,
+                 layers_in_res_blocks=3):
     '''
     inputs:
         block_input: input tensor to apply the resnet block to
@@ -26,9 +26,8 @@ def apply_res_block(block_input,
     NOTE: Current implementation assumes dim_order is 'th'.  (channel, row, col)
     '''
 
-    # convolution path
-    conv_y = block_input
 
+    conv_y = block_input
     for i in range(layers_in_res_blocks):
         conv_y = Convolution2D(n_filters, filter_size, filter_size, border_mode='same')(conv_y)
         conv_y = LeakyReLU(0.2)(conv_y)
@@ -51,15 +50,18 @@ def make_disc_model_body(input_shape, n_disc_filters):
 
     def make_disc_encoder(input_shape, n_disc_filters):
         output = Sequential(name='disc_layer_stack')
-        output.add(Convolution2D(n_disc_filters[0], 3, 3, subsample=(2, 2), border_mode='same',
-                                 input_shape=input_shape))
+        output.add(Convolution2D(n_disc_filters[0], 1, 1, border_mode='same', input_shape=input_shape))
         output.add(LeakyReLU(0.2))
-        for n_filters_in_block in n_disc_filters[1:]:
+        for n_filters_in_block in n_disc_filters:
             output.add(Convolution2D(n_filters_in_block, 3, 3, subsample=(2, 2), border_mode='same'))
             output.add(LeakyReLU(0.2))
             output.add(Convolution2D(n_filters_in_block, 1, 1))
             output.add(LeakyReLU(0.2))
-        output.add(Flatten())
+
+        # Add an extra dimension on front of this output, to allow convolving images together
+        curr_output_shape = output.output_shape
+        new_shape = (1, curr_output_shape[1], curr_output_shape[2], curr_output_shape[3])
+        output.add(Reshape(new_shape))
         return output
 
     disc_encoder = make_disc_encoder(input_shape, n_disc_filters)
@@ -74,7 +76,17 @@ def make_disc_model_body(input_shape, n_disc_filters):
                         mode='concat',
                         concat_axis=1)
 
-    disc_output = Dense(1, activation='sigmoid', name='disc_output')(disc_merged)
+    for i in range(2):
+        encoded_pair = Convolution3D(32, 1, 1, 1, border_mode='same')(disc_merged)
+        encoded_pair = LeakyReLU(0.2)(encoded_pair)
+        encoded_pair = Convolution3D(32, 1, 3, 3, border_mode='same')(encoded_pair)
+        encoded_pair = LeakyReLU(0.2)(encoded_pair)
+        encoded_pair = MaxPooling3D(pool_size=(1,2,2))(encoded_pair)
+
+    encoded_pair = Flatten()(encoded_pair)
+    disc_output = Dense(50, name='disc_output')(encoded_pair)
+    disc_output = LeakyReLU(0.2)(disc_output)
+    disc_output = Dense(1, activation='sigmoid', name='disc_output')(encoded_pair)
     disc_model_body = Model(input=[blurry_img, clear_img], output=disc_output, name='disc_model_body')
     return disc_model_body
 
@@ -98,7 +110,7 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
     gen_x = LeakyReLU(0.2)(gen_x)
 
     for n_filters in n_filters_in_res_blocks:
-        gen_x = apply_res_block(gen_x,
+        gen_x = res_block_2D(gen_x,
                                 n_filters=n_filters,
                                 filter_size=gen_filter_size,
                                 layers_in_res_blocks=layers_in_res_blocks)
@@ -142,10 +154,8 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
     print(gen_model.summary())
     print('--------------------------------------------------')
     print('DISCRIMINATIVE MODEL')
-    print(disc_model.summary())
-    print('--------------------------------------------------')
-    print('STACKED MODEL')
-    print(gen_disc_model.summary())
+    print(disc_model_body.summary())
+
 
 
     return gen_model, disc_model, gen_disc_model
