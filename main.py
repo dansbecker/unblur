@@ -1,27 +1,8 @@
-import cv2
-import numpy as np
-import os
 from blurred_image_maker import show_img, make_and_save_images
 from data_feeder import DataFeeder
 from model import make_models
 from trainer import Trainer
-from utils import normalize_pred_img_array, get_blurred_img_array
-
-
-
-def save_predicted_images(gen_model, blurred_images):
-    '''
-    Creates predicted versions of clear image from blurred images.  Saves them
-    in tmp/predicted.  Blurred images should be a numpy array of out-of-sample images
-    '''
-    pred_imgs = gen_model.predict(blurred_val_images)
-    n_pred_imgs = pred_imgs.shape[0]
-    for i in range(n_pred_imgs):
-        img = pred_imgs[i]
-        out_fname = './tmp/predicted/' +  str(i) + '.jpg'
-        img = normalize_pred_img_array(img)
-        cv2.imwrite(out_fname, img)
-
+from utils import normalize_pred_img_array, get_blurred_img_array, save_predicted_images
 
 
 if __name__ == "__main__":
@@ -44,7 +25,7 @@ if __name__ == "__main__":
                                                         gen_filter_size=3,
                                                         layers_in_res_blocks=2,
                                                         res_block_subsample=(2, 2),
-                                                        filters_in_deconv=32,
+                                                        filters_in_deconv=[32 for _ in range(4)],
                                                         deconv_filter_size=3,
                                                         n_disc_filters=[64, 64])
     data_feeder = DataFeeder(batch_size=16, gen_only_batch_size=16)

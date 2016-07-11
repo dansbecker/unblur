@@ -26,11 +26,22 @@ class DataFeeder(object):
         self.is_real = []
 
     def _add_true_image_pair_to_batch(self, fname):
+        '''
+        Adds generated image to accumulator, with fname being input to generator
+        Also adds the input and is_real values to appropriate accumulators to
+        keep the 3 accumulators in sync
+        '''
         self.blur_images.append(read_and_transform_image(self.blur_dir + fname))
         self.clear_images.append(read_and_transform_image(self.clean_dir + fname))
         self.is_real.append(1)
 
     def _add_gen_image_pair_to_batch(self, fname, gen_model):
+        '''
+        Adds generated image to accumulator, with fname being input to generator
+        Also adds the input and is_real values to appropriate accumulators to
+        keep the 3 accumulators in sync
+        '''
+
         blur_item = read_and_transform_image(self.blur_dir + fname)
         array_to_predict_on = np.array([blur_item])
         generated_image = gen_model.predict(array_to_predict_on)[0,:] #dim 0 is img index
@@ -39,14 +50,15 @@ class DataFeeder(object):
         self.is_real.append(0)
 
     def _reset_accumulators(self):
+        '''Clear accumulators to start a new batch'''
         self.blur_images = []
         self.clear_images = []
         self.is_real = []
 
     def get_batch(self, gen_model):
         '''
-        Returns tuple of blurred images, clear images and indication of clear images are generated vs real
-        blurred_images are from raw/read data.  Clear images can be from original data, or generated from
+        Returns tuple of blurred images, clear images and indication of which "real."
+        Blurred_images are from raw/read data.  Clear images can be from original data, or generated from
         gen_model.  is_real is 1 if the clear_image is real, 0 otherwise.
         '''
         self._reset_accumulators()
@@ -58,6 +70,12 @@ class DataFeeder(object):
         return (blur_out, clear_out, is_real)
 
     def get_gen_only_batch(self):
+        '''
+        Returns a batch of (generated_image, is_real) pairs. is_real equals 0
+        since the generated images aren't real.
+        Pulls blurry images to generate from out of self.blur_dir
+        '''
+
         self._reset_accumulators()
         while len(self.is_real) < self.gen_only_batch_size:
             fname = choice(self.fnames)
