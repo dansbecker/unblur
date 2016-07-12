@@ -54,17 +54,22 @@ def gen_disc_objective(y_true, y_pred):
 
     return -1 * log(y_pred)
 
-def make_disc_model_body(input_shape, n_disc_filters):
+def make_disc_model_body(input_shape, n_filters_in_res_blocks, layers_in_res_blocks):
 
-    def make_disc_encoder(input_shape, n_disc_filters):
+    def make_disc_encoder(input_shape, n_filters_in_res_blocks,
+                          layers_in_res_blocks, subsample_per_res_block=(2,2)):
         output = Sequential(name='disc_layer_stack')
-        output.add(Convolution2D(n_disc_filters[0], 1, 1, border_mode='same', input_shape=input_shape))
+        output.add(Convolution2D(n_filters_in_res_blocks[0], 1, 1, border_mode='same', input_shape=input_shape))
         output.add(LeakyReLU(0.2))
-        for n_filters_in_block in n_disc_filters:
-            output.add(Convolution2D(n_filters_in_block, 3, 3, subsample=(2, 2), border_mode='same'))
-            output.add(LeakyReLU(0.2))
-            output.add(Convolution2D(n_filters_in_block, 1, 1))
-            output.add(LeakyReLU(0.2))
+        for n_filters in n_filters_in_res_blocks:
+            res_block = res_block_2D(output.output_shape[1:],
+                                    n_filters=n_filters,
+                                    filter_size=3,
+                                    layers_in_res_blocks=layers_in_res_blocks)
+            output.add(res_block)
+            if subsample_per_res_block != (1,1):
+                output.add(AveragePooling2D(pool_size=subsample_per_res_block, border_mode='same'))
+
 
         # Add an extra dimension on front of this output, to allow convolving images together
         curr_output_shape = output.output_shape
@@ -72,7 +77,7 @@ def make_disc_model_body(input_shape, n_disc_filters):
         output.add(Reshape(new_shape))
         return output
 
-    disc_encoder = make_disc_encoder(input_shape, n_disc_filters)
+    disc_encoder = make_disc_encoder(input_shape, n_filters_in_res_blocks, layers_in_res_blocks)
 
     blurry_img = Input(shape=input_shape)
     blurry_branch = disc_encoder(blurry_img)
@@ -96,10 +101,12 @@ def make_disc_model_body(input_shape, n_disc_filters):
     disc_output = LeakyReLU(0.2)(disc_output)
     disc_output = Dense(1, activation='sigmoid', name='disc_output')(encoded_pair)
     disc_model_body = Model(input=[blurry_img, clear_img], output=disc_output, name='disc_model_body')
+    print('Disc model')
+    print(disc_model_body.summary())
     return disc_model_body
 
 def make_gen_conv_body(input_shape, n_filters_in_res_blocks, gen_filter_size,
-                             layers_in_res_blocks, res_block_subsample):
+                             layers_in_res_blocks, subsample_per_res_block):
     output = Sequential()
     # Channel fixing layer
     output.add(Convolution2D(n_filters_in_res_blocks[0], 1, 1, border_mode='same', input_shape=input_shape))
@@ -110,12 +117,13 @@ def make_gen_conv_body(input_shape, n_filters_in_res_blocks, gen_filter_size,
                                 filter_size=gen_filter_size,
                                 layers_in_res_blocks=layers_in_res_blocks)
         output.add(res_block)
-        if res_block_subsample != (1,1):
-            output.add(AveragePooling2D(pool_size=res_block_subsample, border_mode='same'))
+        if subsample_per_res_block != (1,1):
+            output.add(AveragePooling2D(pool_size=subsample_per_res_block, border_mode='same'))
+    print("Generator Conv layers")
     print(output.summary())
     return output
 
-def make_gen_deconv_body(input_shape, res_block_subsample, filters_in_deconv, deconv_filter_size):
+def make_gen_deconv_body(input_shape, subsample_per_res_block, filters_in_deconv, deconv_filter_size):
     output = Sequential()
 
     # Channel fixing
@@ -123,18 +131,20 @@ def make_gen_deconv_body(input_shape, res_block_subsample, filters_in_deconv, de
     for n_filters in filters_in_deconv:
         output.add(Convolution2D(n_filters, deconv_filter_size, deconv_filter_size, border_mode='same'))
         output.add(LeakyReLU(0.2))
-        output.add(UpSampling2D(size=res_block_subsample))
+        output.add(UpSampling2D(size=subsample_per_res_block))
         output.add(Convolution2D(n_filters, deconv_filter_size, deconv_filter_size, border_mode='same'))
         output.add(LeakyReLU(0.2))
     # fix channels back to 3
     output.add(Convolution2D(3, 1, 1, border_mode='same'))
     output.add(LeakyReLU(0.2))
+    print("Deconv layers")
     print(output.summary())
     return output
 
-def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
-                layers_in_res_blocks, res_block_subsample, filters_in_deconv,
-                deconv_filter_size, n_disc_filters):
+def make_models(input_shape, subsample_per_res_block,
+                n_filters_in_gen_res_blocks, gen_filter_size, layers_in_gen_res_blocks,
+                filters_in_deconv, deconv_filter_size,
+                n_filters_in_disc_res_blocks, layers_in_disc_res_blocks):
     '''
     Creates 3 models. A disciminator, a generator, and a model that stacks these two.
     Some layers are shared in multiple models
@@ -143,23 +153,18 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
         input_shape: single shape describing the blurry and clear image. In th dim_order
     '''
 
-    if res_block_subsample != (1,1):
-        assert len(filters_in_deconv) == len(n_filters_in_res_blocks)
+    if subsample_per_res_block != (1,1):    # Ensure we get back to full-size
+        assert len(filters_in_deconv) == len(n_filters_in_gen_res_blocks)
 
     blurry_img = Input(shape=input_shape, name='blurry_img')
-    gen_convolver = make_gen_conv_body(input_shape, n_filters_in_res_blocks, gen_filter_size,
-                                             layers_in_res_blocks, res_block_subsample)
+    gen_convolver = make_gen_conv_body(input_shape, n_filters_in_gen_res_blocks, gen_filter_size,
+                                             layers_in_gen_res_blocks, subsample_per_res_block)
     convolved_img = gen_convolver(blurry_img)
-    if res_block_subsample != (1,1):
-        gen_deconvolver = make_gen_deconv_body(gen_convolver.output_shape[1:],
-                                               res_block_subsample,
-                                               filters_in_deconv,
-                                               deconv_filter_size)
-        deconvolved_img = gen_deconvolver(convolved_img)
-    else:
-        # Fix channel count back to 3
-        deconvolved_img = Convolution2D(3, 1, 1, border_mode='same')(convolved_img)
-        deconvolved_img = LeakyReLU(0.2)(deconvolved_img)
+    gen_deconvolver = make_gen_deconv_body(gen_convolver.output_shape[1:],
+                                           subsample_per_res_block,
+                                           filters_in_deconv,
+                                           deconv_filter_size)
+    deconvolved_img = gen_deconvolver(convolved_img)
 
     gen_output = merge([blurry_img, deconvolved_img], mode='sum')
     gen_model = Model(input=blurry_img, output=gen_output)
@@ -167,7 +172,9 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
 
     # Discrim model here
     clear_img = Input(shape=input_shape, name='clear_img')
-    disc_model_body = make_disc_model_body(input_shape, n_disc_filters)
+    disc_model_body = make_disc_model_body(input_shape,
+                                           n_filters_in_disc_res_blocks,
+                                           layers_in_res_blocks=layers_in_disc_res_blocks)
 
     disc_model_out = disc_model_body([blurry_img, clear_img])
     gen_disc_model_out = disc_model_body([blurry_img, gen_output])
@@ -175,8 +182,9 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
     disc_model = Model(input=[blurry_img, clear_img], output=disc_model_out)
     gen_disc_model = Model(input=blurry_img, output=gen_disc_model_out)
 
-    disc_optimizer = Adam(2e-4, beta_1=0.5, beta_2=0.99)
-    gen_optimizer  = Adam(2e-4, beta_1=0.5, beta_2=0.99)
+    disc_optimizer = Adam(3e-4, beta_1=0.5, beta_2=0.99)
+    gen_optimizer  = Adam(3e-4, beta_1=0.5, beta_2=0.99)
+
     disc_model.compile(loss='binary_crossentropy', optimizer=disc_optimizer)
     gen_disc_model.compile(loss=gen_disc_objective, optimizer=gen_optimizer)
     return gen_model, disc_model, gen_disc_model
