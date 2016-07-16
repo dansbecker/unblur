@@ -6,7 +6,7 @@ from utils import normalize_pred_img_array, get_blurred_img_array, save_predicte
 
 
 if __name__ == "__main__":
-    total_images = 250
+    images_to_make_per_vid = 250
     num_training_images = 200
     img_height = 144
     img_width = 80
@@ -15,8 +15,8 @@ if __name__ == "__main__":
     remake_images = False
 
     if remake_images:
-        make_and_save_images(images_to_make=total_images,
-                             frames_to_mix = 3,
+        make_and_save_images(images_to_make_per_vid,
+                             frames_to_mix=3,
                              img_height=img_height,
                              img_width=img_width)
 
@@ -27,10 +27,10 @@ if __name__ == "__main__":
                                                         res_block_subsample=(2, 2),
                                                         filters_in_deconv=[32 for _ in range(4)],
                                                         deconv_filter_size=3,
-                                                        n_disc_filters=[64, 64])
-    data_feeder = DataFeeder(batch_size=16, gen_only_batch_size=16)
+                                                        n_disc_filters=[64, 64, 32])
+    data_feeder = DataFeeder(batch_size=32, gen_only_batch_size=32)
     trainer = Trainer(gen_model, disc_model, gen_disc_model, data_feeder, report_freq=10)
-    trainer.train(n_steps=1000)
+    trainer.train(n_steps=1500)
     gen_model, disc_model, gen_disc_model = trainer.get_models()
     blurred_val_images = get_blurred_img_array(num_training_images, total_images)
     save_predicted_images(gen_model, blurred_val_images)

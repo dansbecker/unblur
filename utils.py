@@ -41,7 +41,7 @@ def save_predicted_images(gen_model, blurred_images):
     Creates predicted versions of clear image from blurred images.  Saves them
     in tmp/predicted.  Blurred images should be a numpy array of out-of-sample images
     '''
-    pred_imgs = gen_model.predict(blurred_val_images)
+    pred_imgs = gen_model.predict(blurred_images)
     n_pred_imgs = pred_imgs.shape[0]
     for i in range(n_pred_imgs):
         img = pred_imgs[i]

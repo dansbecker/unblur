@@ -49,15 +49,16 @@ def make_clean_blur_pair(vc, frames_to_mix, img_height, img_width):
     new_frame = mix_frames(raw_frames)
     return raw_frames[0], new_frame
 
-def make_and_save_images(images_to_make = 20,
-                         frames_to_mix = 3,
-                         img_height = 216,
-                         img_width = 384,
-                         vid_fname = './data/test.mp4'):
+def make_and_save_images(images_to_make_per_vid, frames_to_mix, img_height, img_width, vid_dir = './data/'):
     tmp_setup()
-    vc = cv2.VideoCapture(vid_fname)
-    output = [make_clean_blur_pair(vc, frames_to_mix, img_height, img_width) for i in range(images_to_make)]
-    vc.release()
-    for counter, img_pair in enumerate(output):
-        cv2.imwrite('./tmp/clean/' + str(counter) + '.jpg', img_pair[0])
-        cv2.imwrite('./tmp/blur/' + str(counter) + '.jpg', img_pair[1])
+    vid_fnames = os.listdir(vid_dir)
+    for vid_fname in vid_fnames:
+        vid_path = os.path.join(vid_dir, vid_fname)
+        vc = cv2.VideoCapture(vid_path)
+        output = [make_clean_blur_pair(vc, frames_to_mix, img_height, img_width)
+                    for i in range(images_to_make_per_vid)]
+        vc.release()
+        vid_name_without_extension = vid_fname.split('.')[0]
+        for counter, img_pair in enumerate(output):
+            cv2.imwrite('./tmp/clean/' + vid_name_without_extension + '_' +str(counter) + '.jpg', img_pair[0])
+            cv2.imwrite('./tmp/blur/' + vid_name_without_extension + '_' + str(counter) + '.jpg', img_pair[1])
