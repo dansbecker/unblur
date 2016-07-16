@@ -49,7 +49,7 @@ def gen_disc_objective(y_true, y_pred):
     We only train the generator layers, and we want the outcome probability reported
     by the generator to be high.
     '''
-    epsilon = 1.0e-9
+    epsilon = 1.0e-8
     y_pred = clip(y_pred, epsilon, 1.0 - epsilon)
 
     return -1 * log(y_pred)
@@ -175,8 +175,8 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
     disc_model = Model(input=[blurry_img, clear_img], output=disc_model_out)
     gen_disc_model = Model(input=blurry_img, output=gen_disc_model_out)
 
-    disc_optimizer = Adam(4e-4, beta_1=0.5, beta_2=0.99)
-    gen_optimizer  = Adam(4e-4, beta_1=0.5, beta_2=0.99)
+    disc_optimizer = Adam(2e-4, beta_1=0.5, beta_2=0.99)
+    gen_optimizer  = Adam(2e-4, beta_1=0.5, beta_2=0.99)
     disc_model.compile(loss='binary_crossentropy', optimizer=disc_optimizer)
     gen_disc_model.compile(loss=gen_disc_objective, optimizer=gen_optimizer)
     return gen_model, disc_model, gen_disc_model
