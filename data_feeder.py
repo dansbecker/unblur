@@ -2,7 +2,7 @@ import numpy as np
 from random import shuffle, choice
 import os
 from keras.utils.np_utils import to_categorical
-from utils import read_and_transform_image
+from utils import read_and_transform_img
 
 class DataFeeder(object):
     '''
@@ -30,8 +30,8 @@ class DataFeeder(object):
         Also adds the input and is_real values to appropriate accumulators to
         keep the 3 accumulators in sync
         '''
-        self.blur_images.append(read_and_transform_image(self.blur_dir + fname))
-        self.clear_images.append(read_and_transform_image(self.clean_dir + fname))
+        self.blur_images.append(read_and_transform_img(self.blur_dir + fname))
+        self.clear_images.append(read_and_transform_img(self.clean_dir + fname))
         self.is_real.append(1)
 
     def _add_gen_image_pair_to_batch(self, fname, gen_model):
@@ -41,7 +41,7 @@ class DataFeeder(object):
         keep the 3 accumulators in sync
         '''
 
-        blur_item = read_and_transform_image(self.blur_dir + fname)
+        blur_item = read_and_transform_img(self.blur_dir + fname)
         array_to_predict_on = np.array([blur_item])
         generated_image = gen_model.predict(array_to_predict_on)[0,:] #dim 0 is img index
         self.blur_images.append(blur_item)
@@ -78,7 +78,7 @@ class DataFeeder(object):
         self._reset_accumulators()
         while len(self.is_real) < self.gen_only_batch_size:
             fname = choice(self.fnames)
-            self.blur_images.append(read_and_transform_image(self.blur_dir + fname))
+            self.blur_images.append(read_and_transform_img(self.blur_dir + fname))
             self.is_real.append(0)
         blur_out, is_real = (np.array(x) for x in (self.blur_images, self.is_real))
         return (blur_out, is_real)
