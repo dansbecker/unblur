@@ -26,7 +26,6 @@ if __name__ == "__main__":
     data_feeder = DataFeeder(batch_size=20, gen_only_batch_size=20, fnames=train_fnames)
 
     gen_model, disc_model, gen_disc_model = make_models(input_shape,
-
                                                         n_filters_in_res_blocks=[64 for _ in range(3)],
                                                         gen_filter_size=3,
                                                         layers_in_res_blocks=2,
@@ -36,6 +35,6 @@ if __name__ == "__main__":
                                                         n_disc_filters=[64, 32, 32])
 
     trainer = Trainer(gen_model, disc_model, gen_disc_model, data_feeder, report_freq=10)
-    trainer.train(n_steps=2500)
+    trainer.train(n_steps=1000)
     gen_model, disc_model, gen_disc_model = trainer.get_models()
     save_predicted_images(gen_model, val_fnames)
