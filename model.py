@@ -176,7 +176,7 @@ def make_models(input_shape, n_filters_in_res_blocks, gen_filter_size,
     gen_disc_model = Model(input=blurry_img, output=gen_disc_model_out)
 
     disc_optimizer = Adam(2e-4, beta_1=0.5, beta_2=0.99)
-    gen_optimizer  = Adam(2e-4, beta_1=0.5, beta_2=0.99)
+    gen_optimizer  = Adam(3e-4, beta_1=0.5, beta_2=0.99)
     disc_model.compile(loss='binary_crossentropy', optimizer=disc_optimizer)
     gen_disc_model.compile(loss=gen_disc_objective, optimizer=gen_optimizer)
     return gen_model, disc_model, gen_disc_model
