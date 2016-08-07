@@ -12,11 +12,10 @@ class DataFeeder(object):
 
     batch_size should be even, since disc data comes in pairs of real/generated obs.
     '''
-    def __init__(self, train_data_dir='./tmp/', batch_size=8, gen_only_batch_size=8):
+    def __init__(self, train_data_dir='./tmp/', batch_size=8, gen_only_batch_size=8, fnames=[]):
         self.clean_dir = train_data_dir + 'clean/'
         self.blur_dir = train_data_dir + 'blur/'
-        self.fnames = os.listdir(self.clean_dir)
-        assert self.fnames == os.listdir(self.blur_dir)
+        self.fnames = fnames
 
         shuffle(self.fnames)
         self.batch_size = batch_size

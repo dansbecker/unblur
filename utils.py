@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 
 pixel_norm_factor = 255
 
@@ -27,24 +28,26 @@ def th_to_tf_dim_order(img):
     '''Moves channel from index position 0 to index position 2'''
     return img.swapaxes(0, 1).swapaxes(1, 2)
 
-def get_blurred_img_array(start_num, end_num):
-    '''Creates training data. Filenaming convention uses integers. Args indicate which files to pull'''
-    blurred_images = []
-    for i in range(start_num, end_num):
-        fpath = './tmp/blur/' + str(i) + '.jpg'
-        blurred_images.append(read_and_transform_image(fpath))
-    blurred_images = np.array(blurred_images)
-    return blurred_images
 
-def save_predicted_images(gen_model, blurred_images):
+def train_val_split(raw_vids_dir, num_training_images, images_per_video):
+    vid_fnames = os.listdir(raw_vids_dir)
+    train_fnames = []
+    val_fnames = []
+    for vid_fname_with_extension in vid_fnames:
+        vid_name = vid_fname_with_extension.split('.')[0]
+        train_fnames += [vid_name + '_' + str(i) + '.jpg' for i in range(num_training_images)]
+        val_fnames += [vid_name + '_' + str(i) + '.jpg' for i in range(num_training_images, images_per_video)]
+    return train_fnames, val_fnames
+
+
+def save_predicted_images(gen_model, val_fnames):
     '''
-    Creates predicted versions of clear image from blurred images.  Saves them
-    in tmp/predicted.  Blurred images should be a numpy array of out-of-sample images
+    Creates predicted versions of clear image and saves it in tmp/predicted.
     '''
-    pred_imgs = gen_model.predict(blurred_images)
-    n_pred_imgs = pred_imgs.shape[0]
-    for i in range(n_pred_imgs):
-        img = pred_imgs[i]
-        out_fname = './tmp/predicted/' +  str(i) + '.jpg'
+    for fname in val_fnames:
+        blurred_image = read_and_transform_image('./tmp/blur/' + fname)
+        blurred_image = blurred_image[np.newaxis, :, :, :]  # Image number is new index 0
+        img = gen_model.predict(blurred_image)
         img = normalize_pred_img_array(img)
+        out_fname = './tmp/predicted/' + fname
         cv2.imwrite(out_fname, img)
